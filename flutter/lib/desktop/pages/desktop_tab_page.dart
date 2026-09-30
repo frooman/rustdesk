@@ -20,6 +20,10 @@ class DesktopTabPage extends StatefulWidget {
 
   static void onAddSetting(
       {SettingsTabKey initialPage = SettingsTabKey.general}) {
+    if (bind.isDisableSettings()) {
+      // SCTG: settings are locked (hard option disable-settings) — no way in.
+      return;
+    }
     try {
       DesktopTabController tabController = Get.find<DesktopTabController>();
       tabController.add(TabInfo(

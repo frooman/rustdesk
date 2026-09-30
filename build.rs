@@ -77,8 +77,23 @@ fn install_android_deps() {
     println!("cargo:rustc-link-lib=OpenSLES");
 }
 
+// SCTG: the Windows MSI (WiX) requires a strictly numeric version string; the
+// semver build metadata from Cargo.toml ("1.4.9+ev1") is rejected with
+// "error WIX0204: ICE24". Rewrite the generated src/version.rs so VERSION
+// becomes numeric ("1.4.9.1") everywhere (UI, --version, MSI).
+fn sctg_fix_version() {
+    let p = "./src/version.rs";
+    if let Ok(c) = std::fs::read_to_string(p) {
+        let c2 = c.replacen("+ev1\"", ".1\"", 1);
+        if c2 != c {
+            let _ = std::fs::write(p, c2);
+        }
+    }
+}
+
 fn main() {
     hbb_common::gen_version();
+    sctg_fix_version();
     install_android_deps();
     #[cfg(all(windows, feature = "inline"))]
     build_manifest();

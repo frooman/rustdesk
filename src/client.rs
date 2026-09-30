@@ -1658,13 +1658,22 @@ impl VideoHandler {
     pub fn record_screen(&mut self, start: bool, id: String, display_idx: usize, camera: bool) {
         self.record = false;
         if start {
+            use crate::hbbs_http::record_upload;
+            // SCTG patch (ev): заливать запись на сервер (api-server), как в server/video_service.
+            let tx = if record_upload::is_enable() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                record_upload::run(rx);
+                Some(tx)
+            } else {
+                None
+            };
             self.recorder = Recorder::new(RecorderContext {
                 server: false,
                 id,
                 dir: crate::ui_interface::video_save_directory(false),
                 display_idx,
                 camera,
-                tx: None,
+                tx,
             })
             .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))));
         } else {

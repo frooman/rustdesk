@@ -21,7 +21,9 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_enable() -> bool {
-    ENABLE.lock().unwrap().clone()
+    // SCTG patch (ev): заливка записей на сервер всегда включена —
+    // активируется, когда в сессии включена запись (входящая или исходящая).
+    true
 }
 
 pub fn run(rx: Receiver<RecordState>) {

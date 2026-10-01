@@ -78,13 +78,13 @@ fn install_android_deps() {
 }
 
 // SCTG: the Windows MSI (WiX) requires a strictly numeric version string; the
-// semver build metadata from Cargo.toml ("1.4.9+ev4") is rejected with
+// semver build metadata from Cargo.toml ("1.4.9+ev5") is rejected with
 // "error WIX0204: ICE24". Rewrite the generated src/version.rs so VERSION
-// becomes numeric ("1.4.9.4") everywhere (UI, --version, MSI).
+// becomes numeric ("1.4.9.5") everywhere (UI, --version, MSI).
 fn sctg_fix_version() {
     let p = "./src/version.rs";
     if let Ok(c) = std::fs::read_to_string(p) {
-        let c2 = c.replacen("+ev4\"", ".4\"", 1);
+        let c2 = c.replacen("+ev5\"", ".5\"", 1);
         if c2 != c {
             let _ = std::fs::write(p, c2);
         }

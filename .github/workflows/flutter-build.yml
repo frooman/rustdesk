@@ -53,7 +53,7 @@ env:
   # 2. Update the `VCPKG_COMMIT_ID` in `ci.yml` and `playground.yml`.
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836" # 2025.01.13, got "/opt/artifacts/vcpkg/vcpkg: No such file or directory" with latest version
-  VERSION: "1.4.9.3"
+  VERSION: "1.4.9.4"
   NDK_VERSION: "r28c"
   #signing keys env variable checks
   ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
@@ -338,7 +338,7 @@ jobs:
           python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
           popd
           mkdir -p ./SignOutput
-          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
+          mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/EvmDesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
@@ -350,13 +350,13 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python preprocess.py --arp -d ../../rustdesk
+          python preprocess.py --arp --app-name EvmDesk --manufacturer "EVM-Inform" -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
           $msi = Get-ChildItem ./Package/bin/*/Release/en-us/Package.msi | Select-Object -First 1
-          mv $msi.FullName ../../SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.msi
-          sha256sum ../../SignOutput/rustdesk-*.msi
+          mv $msi.FullName ../../SignOutput/EvmDesk-${{ env.VERSION }}-${{ matrix.job.arch }}.msi
+          sha256sum ../../SignOutput/EvmDesk-*.msi
 
       - name: Sign rustdesk self-extracted file
         if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
@@ -368,10 +368,10 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sctg-windows-installers
+          name: evmdesk-windows-installers
           path: |
-            ./SignOutput/rustdesk-*.msi
-            ./SignOutput/rustdesk-*.exe
+            ./SignOutput/EvmDesk-*.msi
+            ./SignOutput/EvmDesk-*.exe
           if-no-files-found: warn
 
       - name: Publish Release
@@ -381,8 +381,8 @@ jobs:
           prerelease: true
           tag_name: ${{ env.TAG_NAME }}
           files: |
-            ./SignOutput/rustdesk-*.msi
-            ./SignOutput/rustdesk-*.exe
+            ./SignOutput/EvmDesk-*.msi
+            ./SignOutput/EvmDesk-*.exe
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:

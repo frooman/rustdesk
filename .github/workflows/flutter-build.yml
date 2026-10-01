@@ -350,6 +350,9 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
+          # WiX: the main app component (App.exe) is sourced as $(var.Product).exe — the binary
+          # must be named EvmDesk.exe in the dist dir; preprocess also reads --version from it.
+          if (Test-Path ../../rustdesk/rustdesk.exe) { Move-Item -Force ../../rustdesk/rustdesk.exe ../../rustdesk/EvmDesk.exe }
           python preprocess.py --arp --app-name EvmDesk --manufacturer "EVM-Inform" -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }

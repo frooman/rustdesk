@@ -125,7 +125,13 @@ impl RecordUploader {
                     self.upload_size = 0;
                     self.running = true;
                     self.last_send = Instant::now();
-                    self.send(&[("type", "new"), ("file", &filename)], Bytes::new())?;
+                    // SCTG patch (ev): кроме имени файла передаём id машины-оператора,
+                    // чтобы сервер знал, кто инициировал сессию (в имени файла есть только ID цели).
+                    let from_id = Config::get_id();
+                    self.send(
+                        &[("type", "new"), ("file", &filename), ("from_id", &from_id)],
+                        Bytes::new(),
+                    )?;
                     Ok(())
                 }
                 Err(_) => bail!("can't parse filename:{:?}", filename),

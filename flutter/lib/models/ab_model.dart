@@ -356,6 +356,40 @@ class AbModel {
     return false;
   }
 
+  /// Creates a new shared address book owned by the current user.
+  ///
+  /// Returns `null` on success, otherwise an error message.
+  Future<String?> createSharedAddressBook({required String name}) async {
+    try {
+      final api =
+          "${await bind.mainGetApiServer()}/api/admin/my/address_book_collection/create";
+      var headers = getHttpHeaders();
+      // These `/api/admin/my/*` endpoints are authenticated by the `api-token`
+      // header (same token as the `Authorization` one).
+      headers['api-token'] = bind.mainGetLocalOption(key: 'access_token');
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({'name': name});
+      final resp =
+          await http.post(Uri.parse(api), headers: headers, body: body);
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
+      if (json.containsKey('error')) {
+        throw json['error'];
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      if (json['code'] != 0) {
+        throw (json['message'] ?? 'Failed to create the address book')
+            .toString();
+      }
+      return null;
+    } catch (err) {
+      debugPrint('createSharedAddressBook err: ${err.toString()}');
+      return err.toString();
+    }
+  }
+
 // #endregion
 
 // #region rule

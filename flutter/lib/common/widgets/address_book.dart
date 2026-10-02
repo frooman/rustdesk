@@ -425,6 +425,8 @@ class _AddressBookState extends State<AddressBook> {
     final items = [
       if (canWrite) getEntry(translate("Add ID"), addIdToCurrentAb),
       if (canWrite) getEntry(translate("Add Tag"), abAddTag),
+      if (!gFFI.abModel.legacyMode.value)
+        getEntry(translate("Create Address Book"), createAddressBook),
       getEntry(translate("Unselect all tags"), gFFI.abModel.unsetSelectedTags),
       if (gFFI.abModel.legacyMode.value)
         sortMenuItem(), // It's already sorted after pulling down
@@ -731,6 +733,88 @@ class _AddressBookState extends State<AddressBook> {
                 ),
               ],
             ),
+            const SizedBox(
+              height: 4.0,
+            ),
+            // NOT use Offstage to wrap LinearProgressIndicator
+            if (isInProgress) const LinearProgressIndicator(),
+          ],
+        ),
+        actions: [
+          dialogButton("Cancel", onPressed: close, isOutline: true),
+          dialogButton("OK", onPressed: submit),
+        ],
+        onSubmit: submit,
+        onCancel: close,
+      );
+    });
+  }
+
+  void createAddressBook() async {
+    var msg = "";
+    var isInProgress = false;
+    TextEditingController controller = TextEditingController(text: '');
+    gFFI.dialogManager.show((setState, close, context) {
+      submit() async {
+        setState(() {
+          msg = "";
+          isInProgress = true;
+        });
+        final name = controller.text.trim();
+        if (name.isEmpty) {
+          setState(() {
+            msg = 'Can not be empty';
+            isInProgress = false;
+          });
+          return;
+        }
+        if (gFFI.abModel.addressBookNames().contains(name)) {
+          setState(() {
+            msg = 'Already exists';
+            isInProgress = false;
+          });
+          return;
+        }
+        final errMsg = await gFFI.abModel.createSharedAddressBook(name: name);
+        if (errMsg != null) {
+          setState(() {
+            msg = errMsg;
+            isInProgress = false;
+          });
+          return;
+        }
+        close();
+        try {
+          // Refresh the book list. pullAb() is a no-op while another pull is
+          // in progress, so retry briefly until the new book shows up.
+          for (var attempt = 0; attempt < 3; attempt++) {
+            await gFFI.abModel.pullAb(
+                force: ForcePullAb.listAndCurrent, quiet: true);
+            if (gFFI.abModel.addressBookNames().contains(name)) {
+              break;
+            }
+            await Future.delayed(const Duration(milliseconds: 600));
+          }
+          await gFFI.abModel.setCurrentName(name);
+          showToast(translate('Successful'));
+        } catch (e) {
+          debugPrint('create address book refresh err: $e');
+        }
+      }
+
+      return CustomAlertDialog(
+        title: Text(translate("Create Address Book")),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: translate('Name'),
+                errorText: msg.isEmpty ? null : translate(msg),
+              ),
+            ).workaroundFreezeLinuxMint(),
             const SizedBox(
               height: 4.0,
             ),

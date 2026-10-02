@@ -390,6 +390,89 @@ class AbModel {
     }
   }
 
+  /// Collection id of the current shared address book, or `null` when the
+  /// current book is personal (`…-…-0`) or legacy.
+  int? currentAbCollectionId() {
+    final guid = current.sharedProfile()?.guid;
+    if (guid == null || guid.isEmpty) {
+      return null;
+    }
+    final parts = guid.split('-');
+    if (parts.length < 3) {
+      return null;
+    }
+    final cid = int.tryParse(parts.last);
+    if (cid == null || cid <= 0) {
+      return null;
+    }
+    return cid;
+  }
+
+  /// Renames the current shared address book.
+  /// Returns `null` on success, otherwise an error message.
+  Future<String?> renameSharedAddressBook(
+      {required int collectionId, required String name}) async {
+    try {
+      final api =
+          "${await bind.mainGetApiServer()}/api/admin/my/address_book_collection/update";
+      var headers = getHttpHeaders();
+      // These `/api/admin/my/*` endpoints are authenticated by the `api-token`
+      // header (same token as the `Authorization` one).
+      headers['api-token'] = bind.mainGetLocalOption(key: 'access_token');
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({'id': collectionId, 'name': name});
+      final resp =
+          await http.post(Uri.parse(api), headers: headers, body: body);
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
+      if (json.containsKey('error')) {
+        throw json['error'];
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      if (json['code'] != 0) {
+        throw (json['message'] ?? 'Failed to rename the address book')
+            .toString();
+      }
+      return null;
+    } catch (err) {
+      debugPrint('renameSharedAddressBook err: ${err.toString()}');
+      return err.toString();
+    }
+  }
+
+  /// Deletes the current shared address book (its records and rules too).
+  /// Returns `null` on success, otherwise an error message.
+  Future<String?> deleteSharedAddressBook({required int collectionId}) async {
+    try {
+      final api =
+          "${await bind.mainGetApiServer()}/api/admin/my/address_book_collection/delete";
+      var headers = getHttpHeaders();
+      headers['api-token'] = bind.mainGetLocalOption(key: 'access_token');
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({'id': collectionId});
+      final resp =
+          await http.post(Uri.parse(api), headers: headers, body: body);
+      Map<String, dynamic> json =
+          _jsonDecodeRespMap(decode_http_response(resp), resp.statusCode);
+      if (json.containsKey('error')) {
+        throw json['error'];
+      }
+      if (resp.statusCode != 200) {
+        throw 'HTTP ${resp.statusCode}';
+      }
+      if (json['code'] != 0) {
+        throw (json['message'] ?? 'Failed to delete the address book')
+            .toString();
+      }
+      return null;
+    } catch (err) {
+      debugPrint('deleteSharedAddressBook err: ${err.toString()}');
+      return err.toString();
+    }
+  }
+
 // #endregion
 
 // #region rule

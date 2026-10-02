@@ -224,6 +224,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Add ID", "Добавить ID"),
         ("Add Tag", "Добавить ключевое слово"),
         ("Unselect all tags", "Отменить выбор всех меток"),
+        ("Create Address Book", "Создать адресную книгу"),
         ("Network error", "Ошибка сети"),
         ("Username missed", "Имя пользователя отсутствует"),
         ("Password missed", "Забыли пароль"),

@@ -433,14 +433,24 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   Widget buildHelpCards(String updateUrl) {
-    if (!bind.isCustomClient() &&
-        updateUrl.isNotEmpty &&
-        !isCardClosed &&
-        bind.mainUriPrefixSync().contains('rustdesk')) {
+    final bool isEvmDesk = bind.mainGetAppNameSync() == 'EvmDesk';
+    if ((isEvmDesk
+            ? (isWindows && updateUrl.isNotEmpty && !isCardClosed)
+            : (!bind.isCustomClient() &&
+                updateUrl.isNotEmpty &&
+                !isCardClosed &&
+                bind.mainUriPrefixSync().contains('rustdesk')))) {
       final isToUpdate = (isWindows || isMacOS) && bind.mainIsInstalled();
       String btnText = isToUpdate ? 'Update' : 'Download';
       GestureTapCallback onPressed = () async {
-        final Uri url = Uri.parse('https://rustdesk.com/download');
+        Uri url = Uri.parse('https://rustdesk.com/download');
+        if (isEvmDesk) {
+          final String downloadFile = bind
+              .mainGetCommonSync(key: 'download-file-${bind.mainGetNewVersion()}');
+          url = Uri.parse(downloadFile.startsWith('error')
+              ? updateUrl
+              : '$updateUrl/$downloadFile');
+        }
         await launchUrl(url);
       };
       if (isToUpdate) {
@@ -454,8 +464,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           btnText,
           onPressed,
           closeButton: true,
-          help: isToUpdate ? 'Changelog' : null,
-          link: isToUpdate
+          help: isToUpdate && !isEvmDesk ? 'Changelog' : null,
+          link: isToUpdate && !isEvmDesk
               ? 'https://github.com/rustdesk/rustdesk/releases/tag/${bind.mainGetNewVersion()}'
               : null);
     }

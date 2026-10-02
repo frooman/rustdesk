@@ -939,6 +939,10 @@ pub fn is_modifier(evt: &KeyEvent) -> bool {
 }
 
 pub fn check_software_update() {
+    if is_evmdesk_client() {
+        std::thread::spawn(move || allow_err!(do_check_sctg_software_update()));
+        return;
+    }
     if is_custom_client() {
         return;
     }
@@ -995,6 +999,100 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
         *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url;
     } else {
         *SOFTWARE_UPDATE_URL.lock().unwrap() = "".to_string();
+    }
+    Ok(())
+}
+
+/// SCTG/EvmDesk self-hosted update channel base URL.
+pub const SCTG_UPDATE_BASE: &str = "http://94.230.35.226:21114/updates";
+
+#[inline]
+pub fn is_evmdesk_client() -> bool {
+    hbb_common::config::APP_NAME.read().unwrap().eq("EvmDesk")
+}
+
+fn sctg_variant() -> &'static str {
+    if config::is_incoming_only() {
+        "incoming"
+    } else if config::is_disable_settings() {
+        "locked"
+    } else {
+        "full"
+    }
+}
+
+fn sctg_version_numbers(v: &str) -> Vec<u64> {
+    v.replace("+ev", ".")
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
+fn sctg_is_newer_version(latest: &str, current: &str) -> bool {
+    let a = sctg_version_numbers(latest);
+    let b = sctg_version_numbers(current);
+    for i in 0..a.len().max(b.len()) {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        if x != y {
+            return x > y;
+        }
+    }
+    false
+}
+
+/// Checks the SCTG/EvmDesk self-hosted update channel.
+/// The manifest is a static JSON file served by our server:
+/// { "variants": { "<variant>": { "version": "1.4.9.9" } } }
+/// where <variant> is one of: full / locked / incoming.
+#[tokio::main(flavor = "current_thread")]
+pub async fn do_check_sctg_software_update() -> hbb_common::ResultType<()> {
+    let variant = sctg_variant();
+    let url = format!("{}/latest.json", SCTG_UPDATE_BASE);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let resp = client.get(&url).send().await?;
+    if !resp.status().is_success() {
+        bail!("SCTG update check failed: HTTP {}", resp.status());
+    }
+    let v: serde_json::Value = resp.json().await?;
+    let latest = v["variants"][variant]["version"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    if latest.is_empty() {
+        log::warn!(
+            "SCTG update: no version for variant '{}' in manifest",
+            variant
+        );
+        return Ok(());
+    }
+    if sctg_is_newer_version(&latest, crate::VERSION) {
+        let response_url = format!("{}/download/{}/{}", SCTG_UPDATE_BASE, variant, latest);
+        log::info!(
+            "SCTG update available: {} -> {} ({})",
+            crate::VERSION,
+            latest,
+            response_url
+        );
+        #[cfg(feature = "flutter")]
+        {
+            let mut m = HashMap::new();
+            m.insert("name", "check_software_update_finish");
+            m.insert("url", &response_url);
+            if let Ok(data) = serde_json::to_string(&m) {
+                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
+            }
+        }
+        *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url;
+    } else {
+        log::debug!(
+            "SCTG update: no update (latest {}, current {})",
+            latest,
+            crate::VERSION
+        );
     }
     Ok(())
 }

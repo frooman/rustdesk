@@ -2860,13 +2860,13 @@ pub fn main_get_common(key: String) -> String {
                 crate::platform::windows::is_msi_installed(),
                 crate::common::is_custom_client(),
             ) {
-                (Ok(true), false) => match crate::platform::windows::release_arch_suffix() {
-                    Some(arch) => format!("rustdesk-{_version}-{arch}.msi"),
+                (Ok(true), _) => match crate::platform::windows::release_arch_suffix() {
+                    Some(arch) => format!("EvmDesk-{_version}-{arch}.msi"),
                     None => "error:unsupported".to_owned(),
                 },
-                (Ok(true), true) | (Ok(false), _) => {
+                (Ok(false), _) => {
                     match crate::platform::windows::release_arch_suffix() {
-                        Some(arch) => format!("rustdesk-{_version}-{arch}.exe"),
+                        Some(arch) => format!("EvmDesk-{_version}-{arch}.exe"),
                         None => "error:unsupported".to_owned(),
                     }
                 }

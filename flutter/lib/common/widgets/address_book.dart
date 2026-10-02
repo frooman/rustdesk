@@ -422,11 +422,20 @@ class _AddressBookState extends State<AddressBook> {
 
   void _showMenu(RelativeRect pos) {
     final canWrite = gFFI.abModel.current.canWrite();
+    // Rename/Delete are available for a shared book the user fully controls
+    // (owner or FullControl rule, incl. the creator's group rule).
+    final canManageCurrentAb = !gFFI.abModel.current.isPersonal() &&
+        gFFI.abModel.current.fullControl() &&
+        gFFI.abModel.currentAbCollectionId() != null;
     final items = [
       if (canWrite) getEntry(translate("Add ID"), addIdToCurrentAb),
       if (canWrite) getEntry(translate("Add Tag"), abAddTag),
       if (!gFFI.abModel.legacyMode.value)
         getEntry(translate("Create Address Book"), createAddressBook),
+      if (!gFFI.abModel.legacyMode.value && canManageCurrentAb)
+        getEntry(translate("Rename Address Book"), renameAddressBook),
+      if (!gFFI.abModel.legacyMode.value && canManageCurrentAb)
+        getEntry(translate("Delete Address Book"), deleteAddressBook),
       getEntry(translate("Unselect all tags"), gFFI.abModel.unsetSelectedTags),
       if (gFFI.abModel.legacyMode.value)
         sortMenuItem(), // It's already sorted after pulling down
@@ -819,6 +828,167 @@ class _AddressBookState extends State<AddressBook> {
               height: 4.0,
             ),
             // NOT use Offstage to wrap LinearProgressIndicator
+            if (isInProgress) const LinearProgressIndicator(),
+          ],
+        ),
+        actions: [
+          dialogButton("Cancel", onPressed: close, isOutline: true),
+          dialogButton("OK", onPressed: submit),
+        ],
+        onSubmit: submit,
+        onCancel: close,
+      );
+    });
+  }
+
+  void renameAddressBook() async {
+    final collectionId = gFFI.abModel.currentAbCollectionId();
+    if (collectionId == null) return;
+    final oldName = gFFI.abModel.currentName.value;
+    var msg = "";
+    var isInProgress = false;
+    TextEditingController controller = TextEditingController(text: oldName);
+    gFFI.dialogManager.show((setState, close, context) {
+      submit() async {
+        setState(() {
+          msg = "";
+          isInProgress = true;
+        });
+        final name = controller.text.trim();
+        if (name.isEmpty) {
+          setState(() {
+            msg = 'Can not be empty';
+            isInProgress = false;
+          });
+          return;
+        }
+        if (name == oldName) {
+          close();
+          return;
+        }
+        if (gFFI.abModel.addressBookNames().contains(name)) {
+          setState(() {
+            msg = 'Already exists';
+            isInProgress = false;
+          });
+          return;
+        }
+        final errMsg = await gFFI.abModel.renameSharedAddressBook(
+            collectionId: collectionId, name: name);
+        if (errMsg != null) {
+          setState(() {
+            msg = errMsg;
+            isInProgress = false;
+          });
+          return;
+        }
+        close();
+        try {
+          // Refresh the book list until the new name shows up.
+          for (var attempt = 0; attempt < 3; attempt++) {
+            await gFFI.abModel.pullAb(
+                force: ForcePullAb.listAndCurrent, quiet: true);
+            if (gFFI.abModel.addressBookNames().contains(name)) {
+              break;
+            }
+            await Future.delayed(const Duration(milliseconds: 600));
+          }
+          await gFFI.abModel.setCurrentName(name);
+          showToast(translate('Successful'));
+        } catch (e) {
+          debugPrint('rename address book refresh err: $e');
+        }
+      }
+
+      return CustomAlertDialog(
+        title: Text(translate("Rename Address Book")),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: translate('Name'),
+                errorText: msg.isEmpty ? null : translate(msg),
+              ),
+            ).workaroundFreezeLinuxMint(),
+            const SizedBox(
+              height: 4.0,
+            ),
+            if (isInProgress) const LinearProgressIndicator(),
+          ],
+        ),
+        actions: [
+          dialogButton("Cancel", onPressed: close, isOutline: true),
+          dialogButton("OK", onPressed: submit),
+        ],
+        onSubmit: submit,
+        onCancel: close,
+      );
+    });
+  }
+
+  void deleteAddressBook() async {
+    final collectionId = gFFI.abModel.currentAbCollectionId();
+    if (collectionId == null) return;
+    final name = gFFI.abModel.currentName.value;
+    var isInProgress = false;
+    gFFI.dialogManager.show((setState, close, context) {
+      submit() async {
+        setState(() {
+          isInProgress = true;
+        });
+        final errMsg = await gFFI.abModel
+            .deleteSharedAddressBook(collectionId: collectionId);
+        if (errMsg != null) {
+          setState(() {
+            isInProgress = false;
+          });
+          showToast(errMsg);
+          return;
+        }
+        close();
+        try {
+          // Refresh the list; once the book is gone, setCurrentName falls
+          // back to the personal address book.
+          for (var attempt = 0; attempt < 3; attempt++) {
+            await gFFI.abModel.pullAb(
+                force: ForcePullAb.listAndCurrent, quiet: true);
+            if (!gFFI.abModel.addressBookNames().contains(name)) {
+              break;
+            }
+            await Future.delayed(const Duration(milliseconds: 600));
+          }
+          await gFFI.abModel.setCurrentName(name);
+          showToast(translate('Successful'));
+        } catch (e) {
+          debugPrint('delete address book refresh err: $e');
+        }
+      }
+
+      return CustomAlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.delete_rounded,
+              color: Colors.red,
+            ),
+            Expanded(
+              child: Text(translate("Delete Address Book"),
+                      overflow: TextOverflow.ellipsis)
+                  .paddingOnly(left: 10),
+            ),
+          ],
+        ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name),
+            const SizedBox(
+              height: 4.0,
+            ),
             if (isInProgress) const LinearProgressIndicator(),
           ],
         ),

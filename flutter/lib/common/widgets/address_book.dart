@@ -83,7 +83,7 @@ class _AddressBookState extends State<AddressBook> {
                   border: Border.all(
                       color: Theme.of(context).colorScheme.background)),
               child: Container(
-                width: 200,
+                width: 300,
                 height: double.infinity,
                 child: Column(
                   children: [

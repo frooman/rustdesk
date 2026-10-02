@@ -50,7 +50,9 @@ def get_version():
     with open("Cargo.toml", encoding="utf-8") as fh:
         for line in fh:
             if line.startswith("version"):
-                return line.replace("version", "").replace("=", "").replace('"', '').strip()
+                v = line.replace("version", "").replace("=", "").replace('"', '').strip()
+                # SCTG: canonical version "1.4.9+ev6" -> "1.4.9.6" (same as build.rs for Windows)
+                return v.replace("+ev", ".")
     return ''
 
 

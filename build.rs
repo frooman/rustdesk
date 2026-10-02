@@ -84,7 +84,7 @@ fn install_android_deps() {
 fn sctg_fix_version() {
     let p = "./src/version.rs";
     if let Ok(c) = std::fs::read_to_string(p) {
-        let c2 = c.replacen("+ev7\"", ".7\"", 1);
+        let c2 = c.replacen("+ev8\"", ".8\"", 1);
         if c2 != c {
             let _ = std::fs::write(p, c2);
         }

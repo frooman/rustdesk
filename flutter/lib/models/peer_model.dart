@@ -21,6 +21,7 @@ class Peer {
   String loginName; //login username
   String device_group_name;
   String note;
+  String inn = ''; // SCTG: ИНН организации (клиента), к которой относится ПК
   bool? sameServer;
 
   String getId() {
@@ -45,6 +46,7 @@ class Peer {
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         note = json['note'] is String ? json['note'] : '',
+        inn = json['inn'] is String ? json['inn'] : '',
         sameServer = json['same_server'];
 
   Map<String, dynamic> toJson() {
@@ -63,6 +65,7 @@ class Peer {
       'loginName': loginName,
       'device_group_name': device_group_name,
       'note': note,
+      'inn': inn,
       'same_server': sameServer,
     };
   }
@@ -108,6 +111,7 @@ class Peer {
     required this.loginName,
     required this.device_group_name,
     required this.note,
+    this.inn = '',
     this.sameServer,
   });
 
@@ -142,7 +146,8 @@ class Peer {
         rdpUsername == other.rdpUsername &&
         device_group_name == other.device_group_name &&
         loginName == other.loginName &&
-        note == other.note;
+        note == other.note &&
+        inn == other.inn;
   }
 
   factory Peer.copy(Peer other) {
@@ -161,6 +166,7 @@ class Peer {
         loginName: other.loginName,
         device_group_name: other.device_group_name,
         note: other.note,
+        inn: other.inn,
         sameServer: other.sameServer);
     peer.online = other.online;
     return peer;

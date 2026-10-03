@@ -557,6 +557,14 @@ class AbModel {
     return res;
   }
 
+  Future<bool> changeInn({required String id, required String inn}) async {
+    bool res = await current.changeInn(id: id, inn: inn);
+    await pullNonLegacyAfterChange();
+    currentAbPeers.refresh();
+    // no need to save cache
+    return res;
+  }
+
   Future<bool> changePersonalHashPassword(String id, String hash) async {
     var ret = false;
     final personalAb = addressbooks[_personalAddressBookName];
@@ -848,6 +856,15 @@ class AbModel {
     }
   }
 
+  String getPeerInn(String id) {
+    final it = currentAbPeers.where((p0) => p0.id == id);
+    if (it.isEmpty) {
+      return '';
+    } else {
+      return it.first.inn;
+    }
+  }
+
   Color getCurrentAbTagColor(String tag) {
     if (tag == kUntagged) {
       return MyTheme.accent;
@@ -1054,6 +1071,7 @@ abstract class BaseAb {
   Future<bool> changeAlias({required String id, required String alias});
 
   Future<bool> changeNote({required String id, required String note});
+  Future<bool> changeInn({required String id, required String inn});
 
   Future<bool> changePersonalHashPassword(String id, String hash);
 
@@ -1276,6 +1294,12 @@ class LegacyAb extends BaseAb {
 
   @override
   Future<bool> changeNote({required String id, required String note}) async {
+    // no need to implement
+    return false;
+  }
+
+  @override
+  Future<bool> changeInn({required String id, required String inn}) async {
     // no need to implement
     return false;
   }
@@ -1762,6 +1786,27 @@ class Ab extends BaseAb {
     }
   }
 
+  @override
+  Future<bool> changeInn({required String id, required String inn}) async {
+    try {
+      final api =
+          "${await bind.mainGetApiServer()}/api/ab/peer/update/${profile.guid}";
+      var headers = getHttpHeaders();
+      headers['Content-Type'] = "application/json";
+      final body = jsonEncode({"id": id, "inn": inn});
+      final resp = await http.put(Uri.parse(api), headers: headers, body: body);
+      final errMsg = _jsonDecodeActionResp(resp);
+      if (errMsg.isNotEmpty) {
+        BotToast.showText(contentColor: Colors.red, text: errMsg);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      debugPrint('changeInn err: ${err.toString()}');
+      return false;
+    }
+  }
+
   Future<bool> _setPassword(Object bodyContent) async {
     try {
       final api =
@@ -2030,6 +2075,11 @@ class DummyAb extends BaseAb {
 
   @override
   Future<bool> changeNote({required String id, required String note}) async {
+    return false;
+  }
+
+  @override
+  Future<bool> changeInn({required String id, required String inn}) async {
     return false;
   }
 

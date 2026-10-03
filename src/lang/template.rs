@@ -227,6 +227,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Create Address Book", ""),
         ("Rename Address Book", ""),
         ("Delete Address Book", ""),
+        ("Cannot delete a non-empty address book", ""),
         ("Network error", ""),
         ("Username missed", ""),
         ("Password missed", ""),

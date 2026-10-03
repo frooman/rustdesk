@@ -131,6 +131,10 @@ class _PeerCardState extends State<_PeerCard>
     return peerTabShowNote(widget.tab) && peer.note.isNotEmpty;
   }
 
+  bool _showInn(Peer peer) {
+    return peerTabShowNote(widget.tab) && peer.inn.isNotEmpty;
+  }
+
   makeChild(bool isPortrait, Peer peer) {
     final name = hideUsernameOnCard == true
         ? peer.hostname
@@ -139,6 +143,7 @@ class _PeerCardState extends State<_PeerCard>
         fontSize: 11,
         color: Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6));
     final showNote = _showNote(peer);
+    final showInn = _showInn(peer);
 
     return Row(
       mainAxisSize: MainAxisSize.max,
@@ -191,6 +196,15 @@ class _PeerCardState extends State<_PeerCard>
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
                       ]).marginOnly(top: isPortrait ? 0 : 2),
+                        if (showInn)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              '${translate('INN')} ${peer.inn}',
+                              style: greyStyle,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                       Row(
                         children: [
                           Flexible(
@@ -1189,6 +1203,7 @@ class AddressBookPeerCard extends BasePeerCard {
         menuItems.add(_editTagAction(peer.id));
       }
       menuItems.add(_editNoteAction(peer.id));
+      menuItems.add(_editInnAction(peer.id));
     }
     final addressbooks = gFFI.abModel.addressBooksCanWrite();
     if (gFFI.peerTabModel.currentTab == PeerTabIndex.ab.index) {
@@ -1237,6 +1252,21 @@ class AddressBookPeerCard extends BasePeerCard {
       ),
       proc: () {
         editAbPeerNoteDialog(id);
+      },
+      padding: super.menuPadding,
+      dismissOnClicked: true,
+    );
+  }
+
+  @protected
+  MenuEntryBase<String> _editInnAction(String id) {
+    return MenuEntryButton<String>(
+      childBuilder: (TextStyle? style) => Text(
+        translate('Edit INN'),
+        style: style,
+      ),
+      proc: () {
+        editAbPeerInnDialog(id);
       },
       padding: super.menuPadding,
       dismissOnClicked: true,

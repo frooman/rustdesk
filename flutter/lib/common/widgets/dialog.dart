@@ -2067,6 +2067,58 @@ void editAbPeerNoteDialog(String id) {
   });
 }
 
+void editAbPeerInnDialog(String id) {
+  var isInProgress = false;
+  var msg = '';
+  final currentInn = gFFI.abModel.getPeerInn(id);
+  var controller = TextEditingController(text: currentInn);
+
+  gFFI.dialogManager.show((setState, close, context) {
+    submit() async {
+      final inn = controller.text.trim().replaceAll(' ', '');
+      if (inn.isNotEmpty && !RegExp(r'^\d{10}$|^\d{12}$').hasMatch(inn)) {
+        setState(() {
+          msg = 'Invalid INN';
+        });
+        return;
+      }
+      setState(() {
+        msg = '';
+        isInProgress = true;
+      });
+      await gFFI.abModel.changeInn(id: id, inn: inn);
+      close();
+    }
+
+    return CustomAlertDialog(
+      title: Text(translate("Edit INN")),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 12,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: translate('INN'),
+              counterText: '',
+              errorText: msg.isEmpty ? null : translate(msg),
+            ),
+          ).workaroundFreezeLinuxMint(),
+          if (isInProgress) const LinearProgressIndicator(),
+        ],
+      ),
+      actions: [
+        dialogButton("Cancel", onPressed: close, isOutline: true),
+        dialogButton("OK", onPressed: submit),
+      ],
+      onSubmit: submit,
+      onCancel: close,
+    );
+  });
+}
+
 void renameDialog(
     {required String oldName,
     FormFieldValidator<String>? validator,

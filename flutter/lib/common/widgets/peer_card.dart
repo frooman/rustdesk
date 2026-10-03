@@ -196,15 +196,6 @@ class _PeerCardState extends State<_PeerCard>
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
                       ]).marginOnly(top: isPortrait ? 0 : 2),
-                        if (showInn)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Text(
-                              '${translate('INN')} ${peer.inn}',
-                              style: greyStyle,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
                       Row(
                         children: [
                           Flexible(
@@ -247,6 +238,15 @@ class _PeerCardState extends State<_PeerCard>
                     ],
                   ).marginOnly(top: 2),
                 ),
+                if (showInn)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, right: 2),
+                    child: Text(
+                      '${translate('INN')} ${peer.inn}',
+                      style: greyStyle,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 isPortrait
                     ? checkBoxOrActionMorePortrait(peer)
                     : checkBoxOrActionMoreLandscape(peer, isTile: true),

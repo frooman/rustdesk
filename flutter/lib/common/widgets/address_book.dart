@@ -932,6 +932,11 @@ class _AddressBookState extends State<AddressBook> {
   void deleteAddressBook() async {
     final collectionId = gFFI.abModel.currentAbCollectionId();
     if (collectionId == null) return;
+    // SCTG: нельзя удалять книгу, в которой есть устройства.
+    if (gFFI.abModel.current.peers.isNotEmpty) {
+      showToast(translate('Cannot delete a non-empty address book'));
+      return;
+    }
     final name = gFFI.abModel.currentName.value;
     var isInProgress = false;
     gFFI.dialogManager.show((setState, close, context) {

@@ -342,6 +342,13 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
                 log::debug!("Exit io_loop of id={}", self.handler.get_id());
+                // SCTG: аудит — сообщить API о завершении сессии оператором (close-событие),
+                // чтобы журнал закрылся, даже если цель не прислала close (обрыв у цели).
+                {
+                    let target_id = self.handler.get_id();
+                    let sid = self.handler.lc.read().unwrap().session_id;
+                    crate::hbbs_http::audit_conn_close(&target_id, sid);
+                }
                 // Stop client audio server.
                 if let Some(s) = self.stop_voice_call_sender.take() {
                     s.send(()).ok();

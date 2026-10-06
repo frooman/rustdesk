@@ -26,7 +26,7 @@ pub fn is_enable() -> bool {
     true
 }
 
-pub fn run(rx: Receiver<RecordState>) {
+pub fn run(rx: Receiver<RecordState>, session_id: u64) {
     std::thread::spawn(move || {
         let api_server = crate::get_api_server(
             Config::get_option("api-server"),
@@ -43,6 +43,11 @@ pub fn run(rx: Receiver<RecordState>) {
             upload_size: Default::default(),
             running: Default::default(),
             last_send: Instant::now(),
+            session_id: if session_id == 0 {
+                String::new()
+            } else {
+                session_id.to_string()
+            },
         };
         loop {
             if let Err(e) = match rx.recv() {
@@ -90,6 +95,9 @@ struct RecordUploader {
     upload_size: u64,
     running: bool,
     last_send: Instant,
+    // SCTG: id сессии управления (u64 → строка) — передаётся в /api/record?type=new,
+    // чтобы связать запись с сессией в журнале подключений.
+    session_id: String,
 }
 impl RecordUploader {
     fn send<Q, B>(&self, query: &Q, body: B) -> ResultType<()>
@@ -127,9 +135,15 @@ impl RecordUploader {
                     self.last_send = Instant::now();
                     // SCTG patch (ev): кроме имени файла передаём id машины-оператора,
                     // чтобы сервер знал, кто инициировал сессию (в имени файла есть только ID цели).
+                    // session_id связывает запись с сессией в журнале подключений.
                     let from_id = Config::get_id();
                     self.send(
-                        &[("type", "new"), ("file", &filename), ("from_id", &from_id)],
+                        &[
+                            ("type", "new"),
+                            ("file", &filename),
+                            ("from_id", &from_id),
+                            ("session_id", &self.session_id),
+                        ],
                         Bytes::new(),
                     )?;
                     Ok(())

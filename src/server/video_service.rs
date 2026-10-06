@@ -1053,7 +1053,9 @@ fn get_recorder(
 
         let tx = if record_upload::is_enable() {
             let (tx, rx) = std::sync::mpsc::channel();
-            record_upload::run(rx);
+            // SCTG: запись входящей сессии на стороне цели — session_id здесь недоступен
+            // (глобальный видеосервис); передаём 0 — поле останется пустым.
+            record_upload::run(rx, 0);
             Some(tx)
         } else {
             None

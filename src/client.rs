@@ -1655,14 +1655,21 @@ impl VideoHandler {
     }
 
     /// Start or stop screen record.
-    pub fn record_screen(&mut self, start: bool, id: String, display_idx: usize, camera: bool) {
+    pub fn record_screen(
+        &mut self,
+        start: bool,
+        id: String,
+        display_idx: usize,
+        camera: bool,
+        session_id: u64,
+    ) {
         self.record = false;
         if start {
             use crate::hbbs_http::record_upload;
             // SCTG patch (ev): заливать запись на сервер (api-server), как в server/video_service.
             let tx = if record_upload::is_enable() {
                 let (tx, rx) = std::sync::mpsc::channel();
-                record_upload::run(rx);
+                record_upload::run(rx, session_id);
                 Some(tx)
             } else {
                 None
@@ -2918,8 +2925,9 @@ pub fn start_video_thread<F, T>(
                             let record_state = session.lc.read().unwrap().record_state;
                             let record_permission = session.lc.read().unwrap().record_permission;
                             let id = session.lc.read().unwrap().id.clone();
+                            let session_id = session.lc.read().unwrap().session_id;
                             if record_state && record_permission {
-                                handler.record_screen(true, id, display, is_view_camera);
+                                handler.record_screen(true, id, display, is_view_camera, session_id);
                             }
                             video_handler = Some(handler);
                         }
@@ -2999,8 +3007,9 @@ pub fn start_video_thread<F, T>(
                     }
                     MediaData::RecordScreen(start) => {
                         let id = session.lc.read().unwrap().id.clone();
+                        let session_id = session.lc.read().unwrap().session_id;
                         if let Some(handler) = video_handler.as_mut() {
-                            handler.record_screen(start, id, display, is_view_camera);
+                            handler.record_screen(start, id, display, is_view_camera, session_id);
                         }
                     }
                     _ => {}

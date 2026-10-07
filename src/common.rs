@@ -1011,6 +1011,26 @@ pub fn is_evmdesk_client() -> bool {
     hbb_common::config::APP_NAME.read().unwrap().eq("EvmDesk")
 }
 
+/// SCTG/EvmDesk: имя файла обновления в нашем канале для текущей платформы
+/// и типа установки (MSI-установка → .msi, портативная → .exe).
+pub fn sctg_update_download_file(version: &str) -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let arch = crate::platform::windows::release_arch_suffix()?;
+        let ext = if crate::platform::is_msi_installed().unwrap_or(false) {
+            "msi"
+        } else {
+            "exe"
+        };
+        Some(format!("EvmDesk-{}-{}.{}", version, arch, ext))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = version;
+        None
+    }
+}
+
 fn sctg_variant() -> &'static str {
     if config::is_incoming_only() {
         "incoming"

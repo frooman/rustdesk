@@ -117,6 +117,101 @@ fn start_auto_update_check_(rx_msg: Receiver<UpdateMsg>) {
     }
 }
 
+/// SCTG/EvmDesk: сервисный цикл автообновления (Windows).
+/// Работает под SYSTEM, независимо от залогиненного пользователя: проверяет наш
+/// канал и тихо ставит новую версию, когда нет активных сессий (никто не подключён).
+#[allow(dead_code)]
+pub fn start_service_auto_update() {
+    if !crate::common::is_evmdesk_client() {
+        return;
+    }
+    std::thread::spawn(move || {
+        // Не мешаем старту сервиса.
+        std::thread::sleep(Duration::from_secs(180));
+        loop {
+            if let Err(e) = sctg_service_auto_update_tick() {
+                log::warn!("SCTG service update: {}", e);
+            }
+            std::thread::sleep(Duration::from_secs(6 * 60 * 60));
+        }
+    });
+}
+
+/// SCTG: автообновление включено по умолчанию для EvmDesk-клиентов
+/// (выключается опцией allow-auto-update=N).
+#[allow(dead_code)]
+fn sctg_auto_update_enabled() -> bool {
+    let v = config::Config::get_option(config::keys::OPTION_ALLOW_AUTO_UPDATE);
+    if v.is_empty() {
+        true
+    } else {
+        config::option2bool(config::keys::OPTION_ALLOW_AUTO_UPDATE, &v)
+    }
+}
+
+/// SCTG: один такт сервисной проверки обновлений.
+/// Обновляемся только когда нет активных сессий:
+/// - наши исходящие (controlling) — по счётчику от клиента;
+/// - входящие (controlled) и port-forward — через IPC-запрос к клиенту
+///   (если клиент не запущен, сессий нет по определению — счётчики нулевые).
+#[allow(dead_code)]
+fn sctg_service_auto_update_tick() -> ResultType<()> {
+    if !crate::common::is_evmdesk_client() || !sctg_auto_update_enabled() {
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if !has_no_controlling_conns() {
+            log::debug!("SCTG service update: controlling sessions active, skip.");
+            return Ok(());
+        }
+        let runtime = hbb_common::tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let controlled = runtime
+            .block_on(crate::ipc::get_controlled_session_count(1000))
+            .unwrap_or(0);
+        let port_forward = runtime
+            .block_on(crate::ipc::get_port_forward_session_count(1000))
+            .unwrap_or(0);
+        if controlled > 0 || port_forward > 0 {
+            log::debug!(
+                "SCTG service update: active sessions (controlled {}, port-forward {}), skip.",
+                controlled,
+                port_forward
+            );
+            return Ok(());
+        }
+        if crate::common::do_check_sctg_software_update().is_err() {
+            return Ok(());
+        }
+        let update_url = crate::common::SOFTWARE_UPDATE_URL.lock().unwrap().clone();
+        if update_url.is_empty() {
+            log::debug!("SCTG service update: no update available.");
+            return Ok(());
+        }
+        let version = update_url.split('/').last().unwrap_or_default().to_owned();
+        let Some(file) = crate::common::sctg_update_download_file(&version) else {
+            bail!("SCTG service update: unsupported platform or arch.");
+        };
+        let download_url = format!("{}/{}", update_url, file);
+        log::info!(
+            "SCTG service update: {} -> {}, downloading {}",
+            crate::VERSION,
+            version,
+            download_url
+        );
+        let file_path = download_update_file(&download_url)?;
+        let update_msi = crate::platform::is_msi_installed().unwrap_or(false);
+        update_new_version(update_msi, &version, &file_path);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        log::debug!("SCTG service update: not implemented on this platform yet.");
+    }
+    Ok(())
+}
+
 fn check_update(manually: bool) -> ResultType<()> {
     // SCTG/EvmDesk: never use the upstream update channel for custom builds.
     if crate::is_custom_client() {
@@ -157,45 +252,7 @@ fn check_update(manually: bool) -> ResultType<()> {
             format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
         };
         log::debug!("New version available: {}", &version);
-        let client = create_http_client_with_url(&download_url);
-        let Some(file_path) = get_download_file_from_url(&download_url) else {
-            bail!("Failed to get the file path from the URL: {}", download_url);
-        };
-        let mut is_file_exists = false;
-        if file_path.exists() {
-            // Check if the file size is the same as the server file size
-            // If the file size is the same, we don't need to download it again.
-            let file_size = std::fs::metadata(&file_path)?.len();
-            let response = client.head(&download_url).send()?;
-            if !response.status().is_success() {
-                bail!("Failed to get the file size: {}", response.status());
-            }
-            let total_size = response
-                .headers()
-                .get(reqwest::header::CONTENT_LENGTH)
-                .and_then(|ct_len| ct_len.to_str().ok())
-                .and_then(|ct_len| ct_len.parse::<u64>().ok());
-            let Some(total_size) = total_size else {
-                bail!("Failed to get content length");
-            };
-            if file_size == total_size {
-                is_file_exists = true;
-            } else {
-                std::fs::remove_file(&file_path)?;
-            }
-        }
-        if !is_file_exists {
-            let response = client.get(&download_url).send()?;
-            if !response.status().is_success() {
-                bail!(
-                    "Failed to download the new version file: {}",
-                    response.status()
-                );
-            }
-            let file_data = response.bytes()?;
-            let mut file = std::fs::File::create(&file_path)?;
-            file.write_all(&file_data)?;
-        }
+        let file_path = download_update_file(&download_url)?;
         // We have checked if the `conns` is empty before, but we need to check again.
         // No need to care about the downloaded file here, because it's rare case that the `conns` are empty
         // before the download, but not empty after the download.
@@ -205,6 +262,50 @@ fn check_update(manually: bool) -> ResultType<()> {
         }
     }
     Ok(())
+}
+
+/// Скачивает файл обновления (переиспользует уже скачанный файл того же размера).
+fn download_update_file(download_url: &str) -> ResultType<PathBuf> {
+    let client = create_http_client_with_url(download_url);
+    let Some(file_path) = get_download_file_from_url(download_url) else {
+        bail!("Failed to get the file path from the URL: {}", download_url);
+    };
+    let mut is_file_exists = false;
+    if file_path.exists() {
+        // Check if the file size is the same as the server file size
+        // If the file size is the same, we don't need to download it again.
+        let file_size = std::fs::metadata(&file_path)?.len();
+        let response = client.head(download_url).send()?;
+        if !response.status().is_success() {
+            bail!("Failed to get the file size: {}", response.status());
+        }
+        let total_size = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|ct_len| ct_len.to_str().ok())
+            .and_then(|ct_len| ct_len.parse::<u64>().ok());
+        let Some(total_size) = total_size else {
+            bail!("Failed to get content length");
+        };
+        if file_size == total_size {
+            is_file_exists = true;
+        } else {
+            std::fs::remove_file(&file_path)?;
+        }
+    }
+    if !is_file_exists {
+        let response = client.get(download_url).send()?;
+        if !response.status().is_success() {
+            bail!(
+                "Failed to download the new version file: {}",
+                response.status()
+            );
+        }
+        let file_data = response.bytes()?;
+        let mut file = std::fs::File::create(&file_path)?;
+        file.write_all(&file_data)?;
+    }
+    Ok(file_path)
 }
 
 #[cfg(target_os = "windows")]

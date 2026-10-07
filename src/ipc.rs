@@ -1910,6 +1910,18 @@ pub async fn get_port_forward_session_count(ms_timeout: u64) -> ResultType<usize
     bail!("Failed to get port forward session count");
 }
 
+/// SCTG/EvmDesk: число активных входящих (controlled) сессий у клиентского процесса.
+/// Используется сервисом для безопасного автообновления (не обновляемся, когда к кому-то подключены).
+#[cfg(windows)]
+pub async fn get_controlled_session_count(ms_timeout: u64) -> ResultType<usize> {
+    let mut c = connect(ms_timeout, "").await?;
+    c.send(&Data::ControlledSessionCount(0)).await?;
+    if let Some(Data::ControlledSessionCount(count)) = c.next_timeout(ms_timeout).await? {
+        return Ok(count);
+    }
+    bail!("Failed to get controlled session count");
+}
+
 #[cfg(feature = "hwcodec")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]

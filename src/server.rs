@@ -589,7 +589,25 @@ pub async fn start_server(is_server: bool, no_server: bool) {
     if is_server {
         crate::common::set_server_running(true);
         std::thread::spawn(move || {
-            if let Err(err) = crate::ipc::start("") {
+            // SCTG: IPC-гонка при перезапуске --server (Linux: /tmp/EvmDesk-<uid>/ipc).
+            // Старый процесс может ещё держать сокет (EADDRINUSE) — переждать и повторить,
+            // вместо мгновенного exit(-1), из-за которого узел «офлайн» ~5 минут.
+            let mut last_err = None;
+            for attempt in 1..=20 {
+                match crate::ipc::start("") {
+                    Ok(()) => return,
+                    Err(err) => {
+                        log::warn!(
+                            "SCTG: failed to start ipc (attempt {}/20): {}; retrying in 1s",
+                            attempt,
+                            err
+                        );
+                        last_err = Some(err);
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    }
+                }
+            }
+            if let Some(err) = last_err {
                 log::error!("Failed to start ipc: {}", err);
                 if crate::is_server() {
                     log::error!("ipc is occupied by another process, try kill it");

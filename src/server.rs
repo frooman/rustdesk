@@ -592,13 +592,16 @@ pub async fn start_server(is_server: bool, no_server: bool) {
             // SCTG: IPC-гонка при перезапуске --server (Linux: /tmp/EvmDesk-<uid>/ipc).
             // Старый процесс может ещё держать сокет (EADDRINUSE) — переждать и повторить,
             // вместо мгновенного exit(-1), из-за которого узел «офлайн» ~5 минут.
+            // Наблюдение 07.10.2026: старый процесс отпускает сокет через ~21 с после
+            // старта нового (close от сервиса приходит с задержкой) — 20 попыток мало,
+            // ставим 120 (2 минуты).
             let mut last_err = None;
-            for attempt in 1..=20 {
+            for attempt in 1..=120 {
                 match crate::ipc::start("") {
                     Ok(()) => return,
                     Err(err) => {
                         log::warn!(
-                            "SCTG: failed to start ipc (attempt {}/20): {}; retrying in 1s",
+                            "SCTG: failed to start ipc (attempt {}/120): {}; retrying in 1s",
                             attempt,
                             err
                         );

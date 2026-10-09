@@ -1033,7 +1033,12 @@ pub fn sctg_update_download_file(version: &str) -> Option<String> {
 
 fn sctg_variant() -> &'static str {
     if config::is_incoming_only() {
-        "incoming"
+        if config::is_disable_settings() {
+            "incoming"
+        } else {
+            // SCTG: incoming с открытым разделом «Безопасность»
+            "incoming-open"
+        }
     } else if config::is_disable_settings() {
         "locked"
     } else {

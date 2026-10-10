@@ -149,6 +149,25 @@ fn sctg_auto_update_enabled() -> bool {
     }
 }
 
+/// SCTG: сессия интерактивного входа для запуска exe-установщика из сервиса.
+/// `None` — активной сессии нет, установку нужно отложить до следующего такта.
+#[allow(dead_code)]
+#[cfg(target_os = "windows")]
+fn sctg_update_session_id() -> Option<u32> {
+    let sid = crate::platform::get_current_session_id(true);
+    if sid == 0xFFFFFFFF {
+        None
+    } else {
+        Some(sid)
+    }
+}
+
+#[allow(dead_code)]
+#[cfg(not(target_os = "windows"))]
+fn sctg_update_session_id() -> Option<u32> {
+    None
+}
+
 /// SCTG: один такт сервисной проверки обновлений.
 /// Обновляемся только когда нет активных сессий:
 /// - наши исходящие (controlling) — по счётчику от клиента;
@@ -203,7 +222,17 @@ fn sctg_service_auto_update_tick() -> ResultType<()> {
         );
         let file_path = download_update_file(&download_url)?;
         let update_msi = crate::platform::is_msi_installed().unwrap_or(false);
-        update_new_version(update_msi, &version, &file_path);
+        // SCTG: exe-установщик надо запускать в сессии интерактивного входа: сессия
+        // самого сервиса (0) не подходит — в ней нет winlogon/explorer, запуск
+        // невозможен, а файл после сбоя удалялся и перекачивался каждый цикл.
+        let session_id = sctg_update_session_id();
+        if !update_msi && session_id.is_none() {
+            log::info!(
+                "SCTG service update: no interactive user session, install deferred to next tick"
+            );
+            return Ok(());
+        }
+        update_new_version(update_msi, &version, &file_path, session_id);
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -258,7 +287,11 @@ fn check_update(manually: bool) -> ResultType<()> {
         // before the download, but not empty after the download.
         if has_no_active_conns() {
             #[cfg(target_os = "windows")]
-            update_new_version(update_msi, &version, &file_path);
+            {
+                // SCTG: клиентский процесс живёт в сессии пользователя — передаём её.
+                let session_id = crate::platform::get_current_process_session_id();
+                update_new_version(update_msi, &version, &file_path, session_id);
+            }
         }
     }
     Ok(())
@@ -309,83 +342,92 @@ fn download_update_file(download_url: &str) -> ResultType<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn update_new_version(update_msi: bool, version: &str, file_path: &PathBuf) {
+fn update_new_version(update_msi: bool, version: &str, file_path: &PathBuf, session_id: Option<u32>) {
     log::debug!(
         "New version is downloaded, update begin, update msi: {update_msi}, version: {version}, file: {:?}",
         file_path.to_str()
     );
     if let Some(p) = file_path.to_str() {
-        if let Some(session_id) = crate::platform::get_current_process_session_id() {
-            if update_msi {
-                match crate::platform::update_me_msi(p, true) {
-                    Ok(_) => {
-                        log::debug!("New version \"{}\" updated.", version);
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "Failed to install the new msi version  \"{}\": {}",
-                            version,
-                            e
-                        );
-                        std::fs::remove_file(&file_path).ok();
-                    }
+        if update_msi {
+            // SCTG: MSI ставится службой напрямую (msiexec /qn), сессия пользователя не нужна.
+            match crate::platform::update_me_msi(p, true) {
+                Ok(_) => {
+                    log::debug!("New version \"{}\" updated.", version);
                 }
-            } else {
-                let custom_client_staging_dir = if crate::is_custom_client() {
-                    let custom_client_staging_dir =
-                        crate::platform::get_custom_client_staging_dir();
-                    if let Err(e) = crate::platform::handle_custom_client_staging_dir_before_update(
-                        &custom_client_staging_dir,
-                    ) {
-                        log::error!(
-                            "Failed to handle custom client staging dir before update: {}",
-                            e
-                        );
-                        std::fs::remove_file(&file_path).ok();
-                        return;
-                    }
-                    Some(custom_client_staging_dir)
-                } else {
-                    // Clean up any residual staging directory from previous custom client
-                    let staging_dir = crate::platform::get_custom_client_staging_dir();
-                    hbb_common::allow_err!(crate::platform::remove_custom_client_staging_dir(
-                        &staging_dir
-                    ));
-                    None
-                };
-                let update_launched = match crate::platform::launch_privileged_process(
-                    session_id,
-                    &format!("{} --update", p),
-                ) {
-                    Ok(h) => {
-                        if h.is_null() {
-                            log::error!("Failed to update to the new version: {}", version);
-                            false
-                        } else {
-                            log::debug!("New version \"{}\" is launched.", version);
-                            true
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to run the new version: {}", e);
-                        false
-                    }
-                };
-                if !update_launched {
-                    if let Some(dir) = custom_client_staging_dir {
-                        hbb_common::allow_err!(crate::platform::remove_custom_client_staging_dir(
-                            &dir
-                        ));
-                    }
+                Err(e) => {
+                    log::error!(
+                        "Failed to install the new msi version  \"{}\": {}",
+                        version,
+                        e
+                    );
                     std::fs::remove_file(&file_path).ok();
                 }
             }
+        } else if let Some(session_id) = session_id {
+            // SCTG: exe-установщик запускаем в сессии интерактивного входа — сессия
+            // самого сервиса (0) не подходит: в ней нет winlogon/explorer, и запуск
+            // процесса невозможен (раньше это приводило к удалению файла и его
+            // повторному скачиванию каждый цикл).
+            let custom_client_staging_dir = if crate::is_custom_client() {
+                let custom_client_staging_dir =
+                    crate::platform::get_custom_client_staging_dir();
+                if let Err(e) = crate::platform::handle_custom_client_staging_dir_before_update(
+                    &custom_client_staging_dir,
+                ) {
+                    log::error!(
+                        "Failed to handle custom client staging dir before update: {}",
+                        e
+                    );
+                    std::fs::remove_file(&file_path).ok();
+                    return;
+                }
+                Some(custom_client_staging_dir)
+            } else {
+                // Clean up any residual staging directory from previous custom client
+                let staging_dir = crate::platform::get_custom_client_staging_dir();
+                hbb_common::allow_err!(crate::platform::remove_custom_client_staging_dir(
+                    &staging_dir
+                ));
+                None
+            };
+            let update_launched = match crate::platform::launch_privileged_process(
+                session_id,
+                &format!("{} --update", p),
+            ) {
+                Ok(h) => {
+                    if h.is_null() {
+                        log::error!("Failed to update to the new version: {}", version);
+                        false
+                    } else {
+                        log::debug!("New version \"{}\" is launched.", version);
+                        true
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to run the new version: {}", e);
+                    false
+                }
+            };
+            if !update_launched {
+                if let Some(dir) = custom_client_staging_dir {
+                    hbb_common::allow_err!(crate::platform::remove_custom_client_staging_dir(
+                        &dir
+                    ));
+                }
+                // SCTG: файл НЕ удаляем — установка будет повторена в следующем такте
+                // (иначе при сбое запуска файл перекачивался бы каждый цикл).
+                log::warn!(
+                    "SCTG update: installer not launched, file kept for retry: {:?}",
+                    file_path
+                );
+            }
         } else {
+            // exe-установщику нужна сессия интерактивного входа; сервисный tick
+            // откладывает установку заранее и сюда не приводит. Файл сохраняем.
             log::error!(
-                "Failed to get the current process session id, Error {}",
-                std::io::Error::last_os_error()
+                "SCTG update: no interactive session to run the installer, file kept: {:?}",
+                file_path
             );
-            std::fs::remove_file(&file_path).ok();
         }
     } else {
         // unreachable!()
